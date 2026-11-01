@@ -10,6 +10,9 @@ import android.provider.Settings;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.widget.EditText;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.text.InputType;
 import android.service.notification.NotificationListenerService;
 import android.view.View;
 import android.widget.Button;
@@ -70,6 +73,58 @@ public class MainActivity extends Activity {
         col.addView(chave("Proteção ligada", Prefs.ATIVO, Prefs.ativo(this)));
         col.addView(chave("Pausar no fim de cada música (para ele escolher a próxima; a escolhida toca sozinha)",
                 Prefs.PAUSAR, Prefs.pausar(this)));
+
+        col.addView(texto("Quanto tempo travar", 20, true));
+        final RadioGroup grupo = new RadioGroup(this);
+        final RadioButton rbFim = new RadioButton(this);
+        rbFim.setText("Até o fim da música");
+        rbFim.setTextSize(16);
+        rbFim.setId(View.generateViewId());
+        final RadioButton rbTempo = new RadioButton(this);
+        rbTempo.setText("Por um tempo determinado (em segundos)");
+        rbTempo.setTextSize(16);
+        rbTempo.setId(View.generateViewId());
+        grupo.addView(rbFim);
+        grupo.addView(rbTempo);
+        grupo.check(Prefs.porTempo(this) ? rbTempo.getId() : rbFim.getId());
+        col.addView(grupo);
+
+        final EditText segundos = new EditText(this);
+        segundos.setInputType(InputType.TYPE_CLASS_NUMBER);
+        segundos.setTextSize(18);
+        segundos.setHint("Segundos (mínimo 5)");
+        segundos.setText(String.valueOf(Prefs.segundos(this)));
+        segundos.setEnabled(Prefs.porTempo(this));
+        segundos.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                int v;
+                try {
+                    v = Integer.parseInt(s.toString().trim());
+                } catch (NumberFormatException e) {
+                    return;
+                }
+                Prefs.get(MainActivity.this).edit().putInt(Prefs.SEGUNDOS, Math.max(5, v)).apply();
+            }
+        });
+        col.addView(segundos);
+        col.addView(texto("No modo por tempo, se a música for mais curta, a tela destrava no fim dela.",
+                14, false));
+
+        grupo.setOnCheckedChangeListener(new RadioGroup.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(RadioGroup g, int id) {
+                boolean tempo = id == rbTempo.getId();
+                segundos.setEnabled(tempo);
+                Prefs.get(MainActivity.this).edit().putBoolean(Prefs.POR_TEMPO, tempo).apply();
+            }
+        });
 
         col.addView(texto("Mensagens na tela", 20, true));
         col.addView(chave("Esconder o vídeo por completo (ele só ouve)",

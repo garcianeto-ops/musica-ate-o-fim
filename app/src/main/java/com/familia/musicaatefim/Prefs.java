@@ -33,6 +33,19 @@ final class Prefs {
         return get(c).getBoolean(MOSTRAR_MSG, true);
     }
 
+    static final String POR_TEMPO = "porTempo";
+    static final String SEGUNDOS = "segundos";
+    static final int SEGUNDOS_PADRAO = 60;
+
+    /** false = trava até o fim da música; true = trava por um número de segundos. */
+    static boolean porTempo(Context c) {
+        return get(c).getBoolean(POR_TEMPO, false);
+    }
+
+    static int segundos(Context c) {
+        return Math.max(5, get(c).getInt(SEGUNDOS, SEGUNDOS_PADRAO));
+    }
+
     static final String COBRIR = "cobrirVideo";
 
     static boolean cobrir(Context c) {

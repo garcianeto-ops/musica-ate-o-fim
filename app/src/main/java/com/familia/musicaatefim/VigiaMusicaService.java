@@ -38,6 +38,9 @@ public class VigiaMusicaService extends NotificationListenerService {
     private long ultimaPos = -1;
     private long limiteTrava;
     private boolean aguardandoEscolha;
+    private boolean porTempo;
+    private long posTrava;
+    private long alvoPos;
     private String arteDaFaixa;
     private boolean temArte;
 
@@ -329,7 +332,10 @@ public class VigiaMusicaService extends NotificationListenerService {
         }
         if (!trava.visivel()) return;
         ultimaPos = -1;
-        limiteTrava = SystemClock.elapsedRealtime() + (dur - pos) + 20000;
+        porTempo = Prefs.porTempo(this);
+        posTrava = pos;
+        alvoPos = porTempo ? Math.min(dur, pos + Prefs.segundos(this) * 1000L) : dur;
+        limiteTrava = SystemClock.elapsedRealtime() + (alvoPos - pos) + 20000;
         h.removeCallbacks(tique);
         h.post(tique);
     }
@@ -355,6 +361,16 @@ public class VigiaMusicaService extends NotificationListenerService {
         }
         ultimaPos = pos;
 
+        // Modo "por tempo": acabou o tempo antes da música terminar → destrava e avisa.
+        boolean tempoAntesDoFim = porTempo && dur > 0 && alvoPos < dur - 2000;
+        if (tempoAntesDoFim && pos >= alvoPos) {
+            faixaLiberada = faixaAtual; // não trava de novo nesta música
+            liberar();
+            trava.mostrarFim(Prefs.msgFim(this));
+            if (Prefs.somFim(this)) tocarSom();
+            return;
+        }
+
         // Segurança: nunca fica travado muito além do tempo da música.
         if (SystemClock.elapsedRealtime() > limiteTrava) {
             liberar();
@@ -370,7 +386,11 @@ public class VigiaMusicaService extends NotificationListenerService {
             arteDaFaixa = k;
             temArte = b != null;
         }
-        trava.atualizar(nome, pos, dur);
+        if (tempoAntesDoFim) {
+            trava.atualizar(nome, pos - posTrava, alvoPos - posTrava);
+        } else {
+            trava.atualizar(nome, pos, dur);
+        }
         h.postDelayed(tique, 500);
     }
 }
