@@ -307,7 +307,7 @@ public class VigiaMusicaService extends NotificationListenerService {
     private void travar(long dur, long pos) {
         if (!Settings.canDrawOverlays(this)) return;
         h.removeCallbacks(tocarSeParado);
-        trava.mostrar(Prefs.msg(this), Prefs.mostrarMsg(this));
+        trava.mostrar(Prefs.msg(this), Prefs.mostrarMsg(this), Prefs.cobrir(this));
         if (!trava.visivel()) return;
         ultimaPos = -1;
         limiteTrava = SystemClock.elapsedRealtime() + (dur - pos) + 20000;

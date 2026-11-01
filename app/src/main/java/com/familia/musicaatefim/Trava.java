@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.util.TypedValue;
 import android.view.Display;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -57,6 +58,8 @@ final class Trava {
     private float dp;
 
     private Raiz raiz;
+    private LinearLayout conteudo;
+    private View espaco;
     private TextView espere;
     private TextView titulo;
     private TextView falta;
@@ -128,8 +131,16 @@ final class Trava {
             }
         });
 
+        // Coluna: aviso "ESPERE" em cima (área do vídeo), espaço, painel de progresso embaixo.
+        conteudo = new LinearLayout(c);
+        conteudo.setOrientation(LinearLayout.VERTICAL);
+        raiz.addView(conteudo, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         espere = aviso(0xE61B2A49);
-        raiz.addView(espere, lpAviso());
+        conteudo.addView(espere);
+        espaco = new View(c);
+        conteudo.addView(espaco, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         LinearLayout painel = new LinearLayout(c);
         painel.setOrientation(LinearLayout.VERTICAL);
@@ -158,11 +169,38 @@ final class Trava {
         lpFalta.topMargin = (int) (10 * dp);
         painel.addView(falta, lpFalta);
 
-        FrameLayout.LayoutParams lpPainel = new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
+        LinearLayout.LayoutParams lpPainel = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         int m = (int) (16 * dp);
-        lpPainel.setMargins(m, m, m, (int) (56 * dp));
-        raiz.addView(painel, lpPainel);
+        lpPainel.setMargins(m, m, m, (int) (40 * dp));
+        conteudo.addView(painel, lpPainel);
+    }
+
+    /** cobrir = fundo opaco e "ESPERE" ocupando toda a parte de cima: o vídeo some, ele só ouve. */
+    private void aplicarModo(boolean cobrir, boolean mostrarMensagem) {
+        int m = (int) (16 * dp);
+        if (cobrir) {
+            raiz.setBackgroundColor(0xFF0F1A2E);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+            lp.setMargins(m, (int) (40 * dp), m, 0);
+            espere.setLayoutParams(lp);
+            espere.setAutoSizeTextTypeUniformWithConfiguration(28, 110, 2, TypedValue.COMPLEX_UNIT_SP);
+            espaco.setVisibility(View.GONE);
+            espere.setVisibility(View.VISIBLE);
+            espere.setAlpha(mostrarMensagem ? 1f : 0f);
+        } else {
+            raiz.setBackgroundColor(0x55000000);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.setMargins(m, (int) (90 * dp), m, 0);
+            espere.setLayoutParams(lp);
+            espere.setAutoSizeTextTypeWithDefaults(TextView.AUTO_SIZE_TEXT_TYPE_NONE);
+            espere.setTextSize(48);
+            espaco.setVisibility(View.VISIBLE);
+            espere.setAlpha(1f);
+            espere.setVisibility(mostrarMensagem ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void criarFim() {
@@ -172,13 +210,13 @@ final class Trava {
         fimRaiz.addView(fimTexto, lpAviso());
     }
 
-    void mostrar(String mensagem, boolean mostrarMensagem) {
+    void mostrar(String mensagem, boolean mostrarMensagem, boolean cobrir) {
         esconderFim();
         if (visivel) return;
         try {
             if (raiz == null) criarTrava();
             espere.setText(mensagem);
-            espere.setVisibility(mostrarMensagem ? View.VISIBLE : View.GONE);
+            aplicarModo(cobrir, mostrarMensagem);
             // Janela com foco (sem FLAG_NOT_FOCUSABLE) para receber os botões de volume e o "voltar".
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
@@ -188,6 +226,11 @@ final class Trava {
                             | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                     PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.START;
+            if (Build.VERSION.SDK_INT >= 28) {
+                // Cobre também a área do entalhe da câmera quando o vídeo está em tela cheia (deitado).
+                lp.layoutInDisplayCutoutMode =
+                        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
+            }
             raiz.upEm = 0;
             wm.addView(raiz, lp);
             visivel = true;

@@ -72,6 +72,8 @@ public class MainActivity extends Activity {
                 Prefs.PAUSAR, Prefs.pausar(this)));
 
         col.addView(texto("Mensagens na tela", 20, true));
+        col.addView(chave("Esconder o vídeo por completo (ele só ouve)",
+                Prefs.COBRIR, Prefs.cobrir(this)));
         col.addView(chave("Mostrar mensagem sobre o vídeo enquanto toca",
                 Prefs.MOSTRAR_MSG, Prefs.mostrarMsg(this)));
         col.addView(texto("Mensagem enquanto a música toca:", 15, false));

@@ -33,6 +33,12 @@ final class Prefs {
         return get(c).getBoolean(MOSTRAR_MSG, true);
     }
 
+    static final String COBRIR = "cobrirVideo";
+
+    static boolean cobrir(Context c) {
+        return get(c).getBoolean(COBRIR, true);
+    }
+
     static boolean somFim(Context c) {
         return get(c).getBoolean(SOM_FIM, false);
     }
