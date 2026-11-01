@@ -33,6 +33,12 @@ final class Prefs {
         return get(c).getBoolean(MOSTRAR_MSG, true);
     }
 
+    static final String NOME_ICONE = "nomeIcone";
+
+    static String nomeIcone(Context c) {
+        return texto(c, NOME_ICONE, "Minhas músicas");
+    }
+
     static final String POR_TEMPO = "porTempo";
     static final String SEGUNDOS = "segundos";
     static final int SEGUNDOS_PADRAO = 60;

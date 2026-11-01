@@ -3,7 +3,22 @@ package com.familia.musicaatefim;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
+import android.content.pm.ShortcutInfo;
+import android.content.pm.ShortcutManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.ImageDecoder;
+import android.graphics.Outline;
 import android.graphics.Typeface;
+import android.graphics.drawable.Icon;
+import android.os.Build;
+import android.view.Gravity;
+import android.view.ViewOutlineProvider;
+import android.widget.ImageView;
+import android.widget.Toast;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.InputStream;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -27,6 +42,8 @@ public class MainActivity extends Activity {
     private TextView status1;
     private TextView status2;
     private float dp;
+    private ImageView fotoView;
+    private static final int PEDIR_FOTO = 10;
 
     @Override
     protected void onCreate(Bundle b) {
@@ -42,6 +59,42 @@ public class MainActivity extends Activity {
         sv.addView(col);
 
         col.addView(texto("Música até o Fim", 26, true));
+
+        // Foto escolhida no próprio celular (fica guardada só dentro do app).
+        fotoView = new ImageView(this);
+        fotoView.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        fotoView.setOutlineProvider(new ViewOutlineProvider() {
+            @Override
+            public void getOutline(View v, Outline o) {
+                o.setOval(0, 0, v.getWidth(), v.getHeight());
+            }
+        });
+        fotoView.setClipToOutline(true);
+        int tam = (int) (170 * dp);
+        LinearLayout.LayoutParams lpFoto = new LinearLayout.LayoutParams(tam, tam);
+        lpFoto.gravity = Gravity.CENTER_HORIZONTAL;
+        lpFoto.topMargin = (int) (12 * dp);
+        col.addView(fotoView, lpFoto);
+        mostrarFoto();
+
+        col.addView(botao("Escolher foto (da galeria)", new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                i.setType("image/*");
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                startActivityForResult(Intent.createChooser(i, "Escolher foto"), PEDIR_FOTO);
+            }
+        }));
+        col.addView(texto("Nome embaixo do ícone:", 15, false));
+        col.addView(campo(Prefs.NOME_ICONE, Prefs.nomeIcone(this)));
+        col.addView(botao("Criar ícone com a foto na tela inicial (abre o YouTube Music)",
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        criarAtalho();
+                    }
+                }));
         col.addView(texto("Quando uma música começa no YouTube Music, a tela fica travada até ela terminar. "
                 + "No fim, a tela destrava sozinha para escolher a próxima.", 16, false));
 
@@ -152,6 +205,124 @@ public class MainActivity extends Activity {
         }));
 
         setContentView(sv);
+    }
+
+    private File arquivoFoto() {
+        return new File(getFilesDir(), "foto.jpg");
+    }
+
+    private void aviso(String t) {
+        Toast.makeText(this, t, Toast.LENGTH_LONG).show();
+    }
+
+    private void mostrarFoto() {
+        Bitmap b = BitmapFactory.decodeFile(arquivoFoto().getPath());
+        if (b != null) {
+            fotoView.setImageBitmap(b);
+            fotoView.setBackground(null);
+        } else {
+            fotoView.setImageDrawable(null);
+            fotoView.setBackgroundColor(0xFFE0E7FF);
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != PEDIR_FOTO || res != RESULT_OK || data == null || data.getData() == null) return;
+        try {
+            Bitmap b = decodificar(data.getData());
+            Bitmap q = quadrado(b, 512);
+            FileOutputStream out = new FileOutputStream(arquivoFoto());
+            try {
+                q.compress(Bitmap.CompressFormat.JPEG, 92, out);
+            } finally {
+                out.close();
+            }
+            mostrarFoto();
+            aviso("Foto salva. Agora toque em \"Criar ícone com a foto\".");
+        } catch (Exception e) {
+            aviso("Não consegui abrir essa foto. Tente outra.");
+        }
+    }
+
+    /** Abre a foto já na posição certa (respeitando a rotação) e reduzida para no máximo ~1024 px. */
+    private Bitmap decodificar(Uri uri) throws Exception {
+        if (Build.VERSION.SDK_INT >= 28) {
+            ImageDecoder.Source src = ImageDecoder.createSource(getContentResolver(), uri);
+            return ImageDecoder.decodeBitmap(src, new ImageDecoder.OnHeaderDecodedListener() {
+                @Override
+                public void onHeaderDecoded(ImageDecoder decoder, ImageDecoder.ImageInfo info,
+                                            ImageDecoder.Source s) {
+                    int w = info.getSize().getWidth();
+                    int h = info.getSize().getHeight();
+                    int menor = Math.min(w, h);
+                    if (menor > 1024) {
+                        float f = 1024f / menor;
+                        decoder.setTargetSize(Math.max(1, Math.round(w * f)), Math.max(1, Math.round(h * f)));
+                    }
+                    decoder.setAllocator(ImageDecoder.ALLOCATOR_SOFTWARE);
+                }
+            });
+        }
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        InputStream in = getContentResolver().openInputStream(uri);
+        try {
+            BitmapFactory.decodeStream(in, null, o);
+        } finally {
+            if (in != null) in.close();
+        }
+        int amostra = 1;
+        while (Math.min(o.outWidth, o.outHeight) / (amostra * 2) >= 1024) amostra *= 2;
+        BitmapFactory.Options o2 = new BitmapFactory.Options();
+        o2.inSampleSize = amostra;
+        in = getContentResolver().openInputStream(uri);
+        try {
+            Bitmap b = BitmapFactory.decodeStream(in, null, o2);
+            if (b == null) throw new Exception("foto inválida");
+            return b;
+        } finally {
+            if (in != null) in.close();
+        }
+    }
+
+    /** Recorte quadrado, puxado um pouco para cima (onde normalmente fica o rosto). */
+    private static Bitmap quadrado(Bitmap b, int lado) {
+        int w = b.getWidth();
+        int h = b.getHeight();
+        int s = Math.min(w, h);
+        int x = (w - s) / 2;
+        int y = (int) ((h - s) * 0.2f);
+        Bitmap q = Bitmap.createBitmap(b, x, y, s, s);
+        return Bitmap.createScaledBitmap(q, lado, lado, true);
+    }
+
+    /** Ícone na tela inicial com a foto, que abre direto o YouTube Music. */
+    private void criarAtalho() {
+        Bitmap foto = BitmapFactory.decodeFile(arquivoFoto().getPath());
+        if (foto == null) {
+            aviso("Escolha a foto primeiro.");
+            return;
+        }
+        Intent yt = getPackageManager().getLaunchIntentForPackage(VigiaMusicaService.YT_MUSIC);
+        if (yt == null) {
+            aviso("YouTube Music não encontrado neste celular.");
+            return;
+        }
+        ShortcutManager sm = getSystemService(ShortcutManager.class);
+        if (sm == null || !sm.isRequestPinShortcutSupported()) {
+            aviso("Este celular não permite criar ícones assim.");
+            return;
+        }
+        if (yt.getAction() == null) yt.setAction(Intent.ACTION_MAIN);
+        Icon icone = Icon.createWithAdaptiveBitmap(Bitmap.createScaledBitmap(foto, 432, 432, true));
+        ShortcutInfo si = new ShortcutInfo.Builder(this, "foto-" + System.currentTimeMillis())
+                .setShortLabel(Prefs.nomeIcone(this))
+                .setIcon(icone)
+                .setIntent(yt)
+                .build();
+        sm.requestPinShortcut(si, null);
     }
 
     @Override
