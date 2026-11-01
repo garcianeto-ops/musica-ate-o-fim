@@ -4,6 +4,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.media.MediaMetadata;
+import android.media.Ringtone;
+import android.media.RingtoneManager;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
 import android.media.session.PlaybackState;
@@ -34,6 +36,7 @@ public class VigiaMusicaService extends NotificationListenerService {
     private long suprimirAte;
     private long ultimaPos = -1;
     private long limiteTrava;
+    private boolean aguardandoEscolha;
 
     private final MediaSessionManager.OnActiveSessionsChangedListener sessoes =
             new MediaSessionManager.OnActiveSessionsChangedListener() {
@@ -58,6 +61,7 @@ public class VigiaMusicaService extends NotificationListenerService {
         public void onSessionDestroyed() {
             soltarControle();
             liberar();
+            trava.esconderFim();
         }
     };
 
@@ -73,6 +77,19 @@ public class VigiaMusicaService extends NotificationListenerService {
         @Override
         public void run() {
             tique();
+        }
+    };
+
+    private final Runnable tocarSeParado = new Runnable() {
+        @Override
+        public void run() {
+            if (controle == null) return;
+            PlaybackState st = controle.getPlaybackState();
+            int e = st == null ? PlaybackState.STATE_NONE : st.getState();
+            if (e == PlaybackState.STATE_PAUSED || e == PlaybackState.STATE_STOPPED
+                    || e == PlaybackState.STATE_NONE) {
+                tocar();
+            }
         }
     };
 
@@ -195,44 +212,81 @@ public class VigiaMusicaService extends NotificationListenerService {
         }
     }
 
-    /** A música travada terminou: destrava e, se configurado, pausa a próxima que começou sozinha. */
+    private void tocar() {
+        if (controle != null) {
+            try {
+                controle.getTransportControls().play();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    /** A música travada terminou: destrava, avisa e, se configurado, pausa a próxima que começou sozinha. */
     private void fimDaMusica() {
         liberar();
+        trava.mostrarFim(Prefs.msgFim(this));
+        if (Prefs.somFim(this)) tocarSom();
         if (Prefs.pausar(this)) {
+            aguardandoEscolha = true;
             faixaSuprimida = faixaAtual;
             suprimirAte = SystemClock.elapsedRealtime() + 4000;
             pausar();
+        } else {
+            aguardandoEscolha = false;
+        }
+    }
+
+    private void tocarSom() {
+        try {
+            Ringtone r = RingtoneManager.getRingtone(this,
+                    RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION));
+            if (r != null) r.play();
+        } catch (Exception ignored) {
         }
     }
 
     private void avaliar() {
         if (controle == null || !Prefs.ativo(this)) {
             liberar();
+            if (trava != null) trava.esconderFim();
             return;
         }
         MediaMetadata md = controle.getMetadata();
         PlaybackState st = controle.getPlaybackState();
         String k = chave(md);
+        int estado = st == null ? PlaybackState.STATE_NONE : st.getState();
 
         if (k != null && !k.equals(faixaAtual)) {
             boolean estavaTravado = trava.visivel();
             faixaAtual = k;
             faixaLiberada = null;
             ultimaPos = -1;
-            // Com a tela travada ninguém conseguiu trocar a música: ela terminou e a próxima entrou.
-            if (estavaTravado) fimDaMusica();
+            if (estavaTravado) {
+                // Com a tela travada ninguém conseguiu trocar a música: ela terminou e a próxima entrou.
+                fimDaMusica();
+            } else if (aguardandoEscolha && !k.equals(faixaSuprimida)) {
+                // Ele escolheu outra música: toca direto, sem precisar apertar play.
+                aguardandoEscolha = false;
+                h.removeCallbacks(tocarSeParado);
+                h.postDelayed(tocarSeParado, 400);
+                h.postDelayed(tocarSeParado, 1500);
+            }
         }
 
-        int estado = st == null ? PlaybackState.STATE_NONE : st.getState();
         long dur = md == null ? 0 : md.getLong(MediaMetadata.METADATA_KEY_DURATION);
         long pos = posicao(st);
         long agora = SystemClock.elapsedRealtime();
 
         if (estado == PlaybackState.STATE_PLAYING) {
             h.removeCallbacks(liberarSeParado);
-            if (agora < suprimirAte && k != null && k.equals(faixaSuprimida)) {
-                pausar();
-                return;
+            if (aguardandoEscolha && k != null && k.equals(faixaSuprimida)) {
+                if (agora < suprimirAte) {
+                    // A próxima da fila começou sozinha: pausa e espera ele escolher.
+                    pausar();
+                    return;
+                }
+                // Passou o tempo: foi ele quem apertou play nessa música.
+                aguardandoEscolha = false;
             }
             if (k != null && k.equals(faixaLiberada)) {
                 liberar();
@@ -252,7 +306,8 @@ public class VigiaMusicaService extends NotificationListenerService {
 
     private void travar(long dur, long pos) {
         if (!Settings.canDrawOverlays(this)) return;
-        trava.mostrar();
+        h.removeCallbacks(tocarSeParado);
+        trava.mostrar(Prefs.msg(this), Prefs.mostrarMsg(this));
         if (!trava.visivel()) return;
         ultimaPos = -1;
         limiteTrava = SystemClock.elapsedRealtime() + (dur - pos) + 20000;

@@ -5,7 +5,9 @@ e destrava sozinho quando ela termina, para a criança escolher a próxima.
 
 - Barra de progresso grande mostra quanto falta.
 - No fim da música, pausa a próxima que começaria sozinha (pode desligar nos ajustes).
-- Saída para os pais: segurar o canto superior direito da tela por 5 segundos.
+- Mensagem "ESPERE" sobre a área do vídeo; no fim, faixa verde avisando que pode escolher outra.
+- A música escolhida depois do fim toca sozinha, sem apertar play.
+- Saída para os pais: VOLUME + e logo depois VOLUME − (em até 2 s).
 
 ## Baixar
 Cada vez que o código muda, o GitHub gera o APK automaticamente.

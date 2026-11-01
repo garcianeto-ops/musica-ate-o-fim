@@ -7,6 +7,9 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.TextWatcher;
+import android.widget.EditText;
 import android.service.notification.NotificationListenerService;
 import android.view.View;
 import android.widget.Button;
@@ -65,11 +68,21 @@ public class MainActivity extends Activity {
 
         col.addView(texto("Ajustes", 20, true));
         col.addView(chave("Proteção ligada", Prefs.ATIVO, Prefs.ativo(this)));
-        col.addView(chave("Pausar no fim de cada música (para ele escolher a próxima)",
+        col.addView(chave("Pausar no fim de cada música (para ele escolher a próxima; a escolhida toca sozinha)",
                 Prefs.PAUSAR, Prefs.pausar(this)));
 
-        col.addView(texto("Para destravar durante uma música (só para você): segure o canto de cima, "
-                + "à direita, por 5 segundos.", 16, true));
+        col.addView(texto("Mensagens na tela", 20, true));
+        col.addView(chave("Mostrar mensagem sobre o vídeo enquanto toca",
+                Prefs.MOSTRAR_MSG, Prefs.mostrarMsg(this)));
+        col.addView(texto("Mensagem enquanto a música toca:", 15, false));
+        col.addView(campo(Prefs.MSG, Prefs.msg(this)));
+        col.addView(texto("Mensagem quando a música termina (faixa verde):", 15, false));
+        col.addView(campo(Prefs.MSG_FIM, Prefs.msgFim(this)));
+        col.addView(chave("Tocar um aviso sonoro quando a música terminar",
+                Prefs.SOM_FIM, Prefs.somFim(this)));
+
+        col.addView(texto("Para destravar durante uma música (só para você): aperte VOLUME + "
+                + "e logo em seguida VOLUME − (em até 2 segundos).", 16, true));
         col.addView(texto("Dica: ative a Fixação de tela (Configurações > Segurança > Fixar app) e fixe o "
                 + "YouTube Music. Assim ele não sai do app nem abre a barra de notificações.", 14, false));
 
@@ -123,6 +136,26 @@ public class MainActivity extends Activity {
         bt.setAllCaps(false);
         bt.setOnClickListener(l);
         return bt;
+    }
+
+    private EditText campo(final String prefKey, String valor) {
+        EditText et = new EditText(this);
+        et.setText(valor);
+        et.setTextSize(18);
+        et.setSingleLine(true);
+        et.addTextChangedListener(new TextWatcher() {
+            @Override
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+
+            @Override
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+
+            @Override
+            public void afterTextChanged(Editable s) {
+                Prefs.get(MainActivity.this).edit().putString(prefKey, s.toString()).apply();
+            }
+        });
+        return et;
     }
 
     private Switch chave(String t, final String prefKey, boolean valor) {

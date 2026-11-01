@@ -6,14 +6,17 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PixelFormat;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.hardware.display.DisplayManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.text.TextUtils;
 import android.view.Display;
 import android.view.Gravity;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
@@ -24,31 +27,45 @@ import android.widget.TextView;
 
 import java.util.Locale;
 
-/** Camada transparente por cima da tela que bloqueia o toque e mostra o progresso da música. */
+/**
+ * Camadas por cima da tela:
+ *  - trava: bloqueia o toque, mostra "ESPERE" sobre a área do vídeo e a barra de progresso;
+ *  - aviso de fim: faixa verde no mesmo lugar dizendo que pode escolher outra música
+ *    (não bloqueia o toque).
+ */
 final class Trava {
 
     interface Saida {
         void liberar();
     }
 
-    private static final long TEMPO_SAIDA_MS = 5000;
+    private static final long JANELA_VOLUME_MS = 2000;
+    private static final long AVISO_FIM_MAX_MS = 20000;
 
     private final Context base;
     private final Saida saida;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private final Runnable sair = new Runnable() {
+    private final Runnable esconderFimRun = new Runnable() {
         @Override
         public void run() {
-            saida.liberar();
+            esconderFim();
         }
     };
 
+    private Context c;
     private WindowManager wm;
-    private FrameLayout raiz;
+    private float dp;
+
+    private Raiz raiz;
+    private TextView espere;
     private TextView titulo;
     private TextView falta;
     private Barra barra;
     private boolean visivel;
+
+    private FrameLayout fimRaiz;
+    private TextView fimTexto;
+    private boolean fimVisivel;
 
     Trava(Context base, Saida saida) {
         this.base = base;
@@ -59,17 +76,49 @@ final class Trava {
         return visivel;
     }
 
-    private void criar() {
-        Context c = base;
+    private void preparar() {
+        if (wm != null) return;
+        c = base;
         if (Build.VERSION.SDK_INT >= 30) {
             DisplayManager dm = base.getSystemService(DisplayManager.class);
             Display d = dm.getDisplay(Display.DEFAULT_DISPLAY);
             c = base.createWindowContext(d, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null);
         }
         wm = (WindowManager) c.getSystemService(Context.WINDOW_SERVICE);
-        float dp = c.getResources().getDisplayMetrics().density;
+        dp = c.getResources().getDisplayMetrics().density;
+    }
 
-        raiz = new FrameLayout(c);
+    private GradientDrawable fundo(int cor) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(cor);
+        g.setCornerRadius(28 * dp);
+        return g;
+    }
+
+    private TextView aviso(int cor) {
+        TextView tv = new TextView(c);
+        tv.setTextColor(Color.WHITE);
+        tv.setTextSize(48);
+        tv.setTypeface(Typeface.DEFAULT_BOLD);
+        tv.setGravity(Gravity.CENTER);
+        int p = (int) (24 * dp);
+        tv.setPadding(p, (int) (36 * dp), p, (int) (36 * dp));
+        tv.setBackground(fundo(cor));
+        return tv;
+    }
+
+    private FrameLayout.LayoutParams lpAviso() {
+        FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        int m = (int) (16 * dp);
+        lp.setMargins(m, (int) (90 * dp), m, m);
+        return lp;
+    }
+
+    private void criarTrava() {
+        preparar();
+        raiz = new Raiz(c);
         raiz.setBackgroundColor(0x55000000);
         // Engole todos os toques: nada chega ao YouTube Music por baixo.
         raiz.setOnTouchListener(new View.OnTouchListener() {
@@ -79,14 +128,14 @@ final class Trava {
             }
         });
 
+        espere = aviso(0xE61B2A49);
+        raiz.addView(espere, lpAviso());
+
         LinearLayout painel = new LinearLayout(c);
         painel.setOrientation(LinearLayout.VERTICAL);
         int p = (int) (22 * dp);
         painel.setPadding(p, p, p, p);
-        GradientDrawable fundo = new GradientDrawable();
-        fundo.setColor(0xE61B2A49);
-        fundo.setCornerRadius(28 * dp);
-        painel.setBackground(fundo);
+        painel.setBackground(fundo(0xE61B2A49));
 
         titulo = new TextView(c);
         titulo.setTextColor(Color.WHITE);
@@ -95,7 +144,7 @@ final class Trava {
         titulo.setEllipsize(TextUtils.TruncateAt.END);
         painel.addView(titulo);
 
-        barra = new Barra(c, dp);
+        barra = new Barra(c);
         LinearLayout.LayoutParams lpBarra = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, (int) (30 * dp));
         lpBarra.topMargin = (int) (16 * dp);
@@ -114,39 +163,32 @@ final class Trava {
         int m = (int) (16 * dp);
         lpPainel.setMargins(m, m, m, (int) (56 * dp));
         raiz.addView(painel, lpPainel);
-
-        // Saída secreta para os pais: segurar o canto superior direito por 5 segundos.
-        View canto = new View(c);
-        canto.setOnTouchListener(new View.OnTouchListener() {
-            @Override
-            public boolean onTouch(View v, MotionEvent e) {
-                int a = e.getActionMasked();
-                if (a == MotionEvent.ACTION_DOWN) {
-                    h.removeCallbacks(sair);
-                    h.postDelayed(sair, TEMPO_SAIDA_MS);
-                } else if (a == MotionEvent.ACTION_UP || a == MotionEvent.ACTION_CANCEL) {
-                    h.removeCallbacks(sair);
-                }
-                return true;
-            }
-        });
-        int lado = (int) (110 * dp);
-        raiz.addView(canto, new FrameLayout.LayoutParams(lado, lado, Gravity.TOP | Gravity.END));
     }
 
-    void mostrar() {
+    private void criarFim() {
+        preparar();
+        fimRaiz = new FrameLayout(c);
+        fimTexto = aviso(0xFF2E7D32);
+        fimRaiz.addView(fimTexto, lpAviso());
+    }
+
+    void mostrar(String mensagem, boolean mostrarMensagem) {
+        esconderFim();
         if (visivel) return;
         try {
-            if (raiz == null) criar();
+            if (raiz == null) criarTrava();
+            espere.setText(mensagem);
+            espere.setVisibility(mostrarMensagem ? View.VISIBLE : View.GONE);
+            // Janela com foco (sem FLAG_NOT_FOCUSABLE) para receber os botões de volume e o "voltar".
             WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.MATCH_PARENT,
                     WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                            | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
                             | WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                     PixelFormat.TRANSLUCENT);
             lp.gravity = Gravity.TOP | Gravity.START;
+            raiz.upEm = 0;
             wm.addView(raiz, lp);
             visivel = true;
         } catch (Exception e) {
@@ -155,11 +197,47 @@ final class Trava {
     }
 
     void esconder() {
-        h.removeCallbacks(sair);
         if (!visivel) return;
         visivel = false;
         try {
             wm.removeView(raiz);
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** Faixa verde no lugar do "ESPERE". Não bloqueia o toque: ele já pode escolher a próxima. */
+    void mostrarFim(String mensagem) {
+        h.removeCallbacks(esconderFimRun);
+        try {
+            if (fimRaiz == null) criarFim();
+            fimTexto.setText(mensagem);
+            if (!fimVisivel) {
+                WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.MATCH_PARENT,
+                        WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                                | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                                | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        PixelFormat.TRANSLUCENT);
+                lp.gravity = Gravity.TOP | Gravity.START;
+                // Até 0.8 o Android deixa o toque passar para o app de baixo.
+                lp.alpha = 0.8f;
+                wm.addView(fimRaiz, lp);
+                fimVisivel = true;
+            }
+            h.postDelayed(esconderFimRun, AVISO_FIM_MAX_MS);
+        } catch (Exception e) {
+            fimVisivel = false;
+        }
+    }
+
+    void esconderFim() {
+        h.removeCallbacks(esconderFimRun);
+        if (!fimVisivel) return;
+        fimVisivel = false;
+        try {
+            wm.removeView(fimRaiz);
         } catch (Exception ignored) {
         }
     }
@@ -177,6 +255,42 @@ final class Trava {
         return String.format(Locale.ROOT, "%d:%02d", s / 60, s % 60);
     }
 
+    /** Raiz da trava: recebe os botões físicos. Volume + e depois volume − (em até 2 s) destrava. */
+    final class Raiz extends FrameLayout {
+        long upEm;
+
+        Raiz(Context ctx) {
+            super(ctx);
+        }
+
+        @Override
+        public boolean dispatchKeyEvent(KeyEvent e) {
+            int k = e.getKeyCode();
+            if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+                long agora = SystemClock.uptimeMillis();
+                if (k == KeyEvent.KEYCODE_VOLUME_UP) {
+                    upEm = agora;
+                } else if (k == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                    if (upEm > 0 && agora - upEm <= JANELA_VOLUME_MS) {
+                        upEm = 0;
+                        h.post(new Runnable() {
+                            @Override
+                            public void run() {
+                                saida.liberar();
+                            }
+                        });
+                    }
+                    upEm = 0;
+                } else {
+                    upEm = 0;
+                }
+            }
+            // Bloqueia "voltar" e "menu" enquanto travado; o volume continua funcionando normalmente.
+            if (k == KeyEvent.KEYCODE_BACK || k == KeyEvent.KEYCODE_MENU) return true;
+            return super.dispatchKeyEvent(e);
+        }
+    }
+
     /** Barra de progresso grande e arredondada. */
     static final class Barra extends View {
         private final Paint fundo = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -184,7 +298,7 @@ final class Trava {
         private final RectF r = new RectF();
         private float fracao;
 
-        Barra(Context c, float dp) {
+        Barra(Context c) {
             super(c);
             fundo.setColor(0x40FFFFFF);
             frente.setColor(0xFF7FD3A8);
