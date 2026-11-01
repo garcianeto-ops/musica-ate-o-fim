@@ -1,0 +1,50 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.familia.musicaatefim'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.familia.musicaatefim'
+        minSdk 26
+        targetSdk 35
+        // Cada versão gerada pelo GitHub ganha um número maior, para atualizar por cima da anterior
+        versionCode((System.getenv('GITHUB_RUN_NUMBER') ?: '1').toInteger())
+        versionName "1.${System.getenv('GITHUB_RUN_NUMBER') ?: '0'}"
+    }
+
+    signingConfigs {
+        fixa {
+            storeFile file('chave.keystore')
+            storePassword 'musica123'
+            keyAlias 'musica'
+            keyPassword 'musica123'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.fixa
+        }
+        debug {
+            signingConfig signingConfigs.fixa
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
