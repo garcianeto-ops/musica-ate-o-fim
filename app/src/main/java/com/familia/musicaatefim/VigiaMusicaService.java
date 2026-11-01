@@ -39,8 +39,8 @@ public class VigiaMusicaService extends NotificationListenerService {
     private long limiteTrava;
     private boolean aguardandoEscolha;
     private boolean porTempo;
-    private long posTrava;
-    private long alvoPos;
+    private long travadoEm;
+    private long limiteMs;
     private String arteDaFaixa;
     private boolean temArte;
 
@@ -198,12 +198,30 @@ public class VigiaMusicaService extends NotificationListenerService {
         return b;
     }
 
-    private static long posicao(PlaybackState st) {
+    private long brutaAnterior = -1;
+    private long brutaDesde;
+
+    /**
+     * Posição atual da música. Se o YouTube Music não informar a hora da última atualização,
+     * avançamos a posição pelo nosso próprio relógio a partir do último valor recebido.
+     */
+    private long posicao(PlaybackState st) {
         if (st == null) return 0;
+        long agora = SystemClock.elapsedRealtime();
         long p = st.getPosition();
-        if (st.getState() == PlaybackState.STATE_PLAYING && st.getLastPositionUpdateTime() > 0) {
-            long passou = SystemClock.elapsedRealtime() - st.getLastPositionUpdateTime();
-            p += (long) (passou * st.getPlaybackSpeed());
+        boolean tocando = st.getState() == PlaybackState.STATE_PLAYING;
+        float vel = st.getPlaybackSpeed() > 0 ? st.getPlaybackSpeed() : 1f;
+        if (p != brutaAnterior) {
+            brutaAnterior = p;
+            brutaDesde = agora;
+        }
+        if (tocando) {
+            long t = st.getLastPositionUpdateTime();
+            if (t > 0 && t <= agora) {
+                p += (long) ((agora - t) * vel);
+            } else {
+                p += (long) ((agora - brutaDesde) * vel);
+            }
         }
         return Math.max(0, p);
     }
@@ -332,10 +350,11 @@ public class VigiaMusicaService extends NotificationListenerService {
         }
         if (!trava.visivel()) return;
         ultimaPos = -1;
-        porTempo = Prefs.porTempo(this);
-        posTrava = pos;
-        alvoPos = porTempo ? Math.min(dur, pos + Prefs.segundos(this) * 1000L) : dur;
-        limiteTrava = SystemClock.elapsedRealtime() + (alvoPos - pos) + 20000;
+        // Temporizador pelo relógio do celular (a posição informada pelo YouTube Music nem sempre avança).
+        travadoEm = SystemClock.elapsedRealtime();
+        limiteMs = Prefs.segundos(this) * 1000L;
+        porTempo = Prefs.porTempo(this) && (dur - pos) > limiteMs + 2000;
+        limiteTrava = travadoEm + (porTempo ? limiteMs : (dur - pos)) + 20000;
         h.removeCallbacks(tique);
         h.post(tique);
     }
@@ -362,8 +381,8 @@ public class VigiaMusicaService extends NotificationListenerService {
         ultimaPos = pos;
 
         // Modo "por tempo": acabou o tempo antes da música terminar → destrava e avisa.
-        boolean tempoAntesDoFim = porTempo && dur > 0 && alvoPos < dur - 2000;
-        if (tempoAntesDoFim && pos >= alvoPos) {
+        long decorrido = SystemClock.elapsedRealtime() - travadoEm;
+        if (porTempo && decorrido >= limiteMs) {
             faixaLiberada = faixaAtual; // não trava de novo nesta música
             liberar();
             trava.mostrarFim(Prefs.msgFim(this));
@@ -386,8 +405,8 @@ public class VigiaMusicaService extends NotificationListenerService {
             arteDaFaixa = k;
             temArte = b != null;
         }
-        if (tempoAntesDoFim) {
-            trava.atualizar(nome, pos - posTrava, alvoPos - posTrava);
+        if (porTempo) {
+            trava.atualizar(nome, decorrido, limiteMs);
         } else {
             trava.atualizar(nome, pos, dur);
         }

@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
         col.addView(fotoView, lpFoto);
         mostrarFoto();
 
-        col.addView(botao("Escolher foto (da galeria)", new View.OnClickListener() {
+        col.addView(botao("Trocar foto (da galeria)", new View.OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent i = new Intent(Intent.ACTION_GET_CONTENT);
@@ -215,15 +215,15 @@ public class MainActivity extends Activity {
         Toast.makeText(this, t, Toast.LENGTH_LONG).show();
     }
 
-    private void mostrarFoto() {
+    /** Foto escolhida na galeria; se nenhuma foi escolhida, a que já vem no app. */
+    private Bitmap fotoAtual() {
         Bitmap b = BitmapFactory.decodeFile(arquivoFoto().getPath());
-        if (b != null) {
-            fotoView.setImageBitmap(b);
-            fotoView.setBackground(null);
-        } else {
-            fotoView.setImageDrawable(null);
-            fotoView.setBackgroundColor(0xFFE0E7FF);
-        }
+        if (b == null) b = BitmapFactory.decodeResource(getResources(), R.drawable.foto_padrao);
+        return b;
+    }
+
+    private void mostrarFoto() {
+        fotoView.setImageBitmap(fotoAtual());
     }
 
     @Override
@@ -300,11 +300,7 @@ public class MainActivity extends Activity {
 
     /** Ícone na tela inicial com a foto, que abre direto o YouTube Music. */
     private void criarAtalho() {
-        Bitmap foto = BitmapFactory.decodeFile(arquivoFoto().getPath());
-        if (foto == null) {
-            aviso("Escolha a foto primeiro.");
-            return;
-        }
+        Bitmap foto = fotoAtual();
         Intent yt = getPackageManager().getLaunchIntentForPackage(VigiaMusicaService.YT_MUSIC);
         if (yt == null) {
             aviso("YouTube Music não encontrado neste celular.");
