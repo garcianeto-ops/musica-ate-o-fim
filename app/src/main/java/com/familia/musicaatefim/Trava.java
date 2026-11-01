@@ -1,6 +1,7 @@
 package com.familia.musicaatefim;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -23,6 +24,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
@@ -41,7 +43,7 @@ final class Trava {
     }
 
     private static final long JANELA_VOLUME_MS = 2000;
-    private static final long AVISO_FIM_MAX_MS = 20000;
+    private static final long AVISO_FIM_MAX_MS = 5000;
 
     private final Context base;
     private final Saida saida;
@@ -59,6 +61,10 @@ final class Trava {
 
     private Raiz raiz;
     private LinearLayout conteudo;
+    private ImageView foto;
+    private View veu;
+    private Bitmap arteAtual;
+    private boolean cobrirAtual;
     private View espaco;
     private TextView espere;
     private TextView titulo;
@@ -132,12 +138,23 @@ final class Trava {
         });
 
         // Coluna: aviso "ESPERE" em cima (área do vídeo), espaço, painel de progresso embaixo.
+        // Capa da música ao fundo (só no modo que esconde o vídeo), com um véu escuro por cima.
+        foto = new ImageView(c);
+        foto.setScaleType(ImageView.ScaleType.CENTER_CROP);
+        raiz.addView(foto, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        veu = new View(c);
+        veu.setBackgroundColor(0x8C000000);
+        raiz.addView(veu, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
         conteudo = new LinearLayout(c);
         conteudo.setOrientation(LinearLayout.VERTICAL);
         raiz.addView(conteudo, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
         espere = aviso(0xE61B2A49);
+        espere.setShadowLayer(14 * dp, 0, 0, 0xE6000000);
         conteudo.addView(espere);
         espaco = new View(c);
         conteudo.addView(espaco, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
@@ -178,9 +195,13 @@ final class Trava {
 
     /** cobrir = fundo opaco e "ESPERE" ocupando toda a parte de cima: o vídeo some, ele só ouve. */
     private void aplicarModo(boolean cobrir, boolean mostrarMensagem) {
+        cobrirAtual = cobrir;
         int m = (int) (16 * dp);
         if (cobrir) {
             raiz.setBackgroundColor(0xFF0F1A2E);
+            foto.setVisibility(View.VISIBLE);
+            veu.setVisibility(arteAtual != null ? View.VISIBLE : View.GONE);
+            espere.setBackground(fundo(arteAtual != null ? 0x40000000 : 0xE61B2A49));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
             lp.setMargins(m, (int) (40 * dp), m, 0);
@@ -191,6 +212,9 @@ final class Trava {
             espere.setAlpha(mostrarMensagem ? 1f : 0f);
         } else {
             raiz.setBackgroundColor(0x55000000);
+            foto.setVisibility(View.GONE);
+            veu.setVisibility(View.GONE);
+            espere.setBackground(fundo(0xE61B2A49));
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
             lp.setMargins(m, (int) (90 * dp), m, 0);
@@ -282,6 +306,17 @@ final class Trava {
         try {
             wm.removeView(fimRaiz);
         } catch (Exception ignored) {
+        }
+    }
+
+    /** Troca a capa de fundo quando o YouTube Music envia (ou atualiza) a imagem da música. */
+    void definirArte(Bitmap b) {
+        if (raiz == null || b == arteAtual) return;
+        arteAtual = b;
+        foto.setImageBitmap(b);
+        if (cobrirAtual) {
+            veu.setVisibility(b != null ? View.VISIBLE : View.GONE);
+            espere.setBackground(fundo(b != null ? 0x40000000 : 0xE61B2A49));
         }
     }
 

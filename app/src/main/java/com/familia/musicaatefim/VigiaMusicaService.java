@@ -3,6 +3,7 @@ package com.familia.musicaatefim;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.media.MediaMetadata;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
@@ -37,6 +38,8 @@ public class VigiaMusicaService extends NotificationListenerService {
     private long ultimaPos = -1;
     private long limiteTrava;
     private boolean aguardandoEscolha;
+    private String arteDaFaixa;
+    private boolean temArte;
 
     private final MediaSessionManager.OnActiveSessionsChangedListener sessoes =
             new MediaSessionManager.OnActiveSessionsChangedListener() {
@@ -183,6 +186,15 @@ public class VigiaMusicaService extends NotificationListenerService {
         return t + "|" + (a == null ? "" : a);
     }
 
+    /** Capa da música enviada pelo YouTube Music (a mesma da notificação). */
+    private static Bitmap arte(MediaMetadata m) {
+        if (m == null) return null;
+        Bitmap b = m.getBitmap(MediaMetadata.METADATA_KEY_ART);
+        if (b == null) b = m.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+        if (b == null) b = m.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+        return b;
+    }
+
     private static long posicao(PlaybackState st) {
         if (st == null) return 0;
         long p = st.getPosition();
@@ -308,6 +320,13 @@ public class VigiaMusicaService extends NotificationListenerService {
         if (!Settings.canDrawOverlays(this)) return;
         h.removeCallbacks(tocarSeParado);
         trava.mostrar(Prefs.msg(this), Prefs.mostrarMsg(this), Prefs.cobrir(this));
+        if (controle != null) {
+            MediaMetadata md = controle.getMetadata();
+            Bitmap b = arte(md);
+            trava.definirArte(b);
+            arteDaFaixa = chave(md);
+            temArte = b != null;
+        }
         if (!trava.visivel()) return;
         ultimaPos = -1;
         limiteTrava = SystemClock.elapsedRealtime() + (dur - pos) + 20000;
@@ -343,6 +362,14 @@ public class VigiaMusicaService extends NotificationListenerService {
         }
 
         String nome = md == null ? "" : md.getString(MediaMetadata.METADATA_KEY_TITLE);
+        // Busca a capa só até achar uma para esta música (evita recarregar a imagem a cada meio segundo).
+        String k = chave(md);
+        if (k != null && (!k.equals(arteDaFaixa) || !temArte)) {
+            Bitmap b = arte(md);
+            trava.definirArte(b);
+            arteDaFaixa = k;
+            temArte = b != null;
+        }
         trava.atualizar(nome, pos, dur);
         h.postDelayed(tique, 500);
     }
